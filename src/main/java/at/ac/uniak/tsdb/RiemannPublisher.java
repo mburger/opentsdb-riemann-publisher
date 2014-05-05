@@ -12,6 +12,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.Set;
+import java.util.HashSet;
 import java.lang.Math;
 import java.net.InetSocketAddress;
 import java.net.UnknownHostException;
@@ -26,6 +28,8 @@ public class RiemannPublisher extends RTPublisher {
   private int riemannPort;
   private RiemannClient client;
   private Date lastException;
+  //keywords reserve for riemann
+  private String[] keywords = {"host","state","ttl","description"}; 
 
   public void initialize(final TSDB tsdb) {
     LOG.info("initialize RiemannPublisher");
@@ -50,10 +54,20 @@ public class RiemannPublisher extends RTPublisher {
   }
 
   public String version() {
-    return "0.0.1";
+    return "0.0.2";
   }
 
   public void collectStats(final StatsCollector collector) {
+  }
+  
+  private ArrayList filter_keywords(final Map<String, String> tags) {
+      List<String> valueList = new ArrayList<String>();
+      for (String keyword : keywords)  {
+          if (!tags.contains(keyword)) {
+            valueList.add(tags.get(keyword));
+          }
+      }
+      return valueList;
   }
 
   public Deferred<Object> publishDataPoint(
@@ -65,14 +79,23 @@ public class RiemannPublisher extends RTPublisher {
 
     try {
 
-      List<String> tagList = new ArrayList<String>(tags.values());
+      HashSet<String> keys = new HashSet<String>(tags.keySet()); 
+      String state = keys.contains("state") ? tags.get("state") : null;
+      String ttl = keys.contains("ttl") ? Float.parseFloat(tags.get("ttl")) : null;
+      String hostName = keys.contains("host") ? tags.get("host") : null;
+      String description = keys.contains("description") ? tags.get("description") : null;
+      List<String> valueList = filter_keywords(tags);
 
       if (client.isConnected()) {
         client.event().
-          host(tags.get("host")).
+          host(hostName).
           service(metric).
           metric(value).
-          tags(tagList).
+          ttl(ttl).
+          state(state).
+          description(description).
+          tags(valueList).
+          time(timestamp).
           send();
       } else {
         reconnectClient();
@@ -92,15 +115,23 @@ public class RiemannPublisher extends RTPublisher {
       final byte[] tsuid) {
 
     try {
-
-      List<String> tagList = new ArrayList<String>(tags.values());
+      HashSet<String> keys = new HashSet<String>(tags.keySet()); 
+      String state = keys.contains("state") ? tags.get("state") : null;
+      String ttl = keys.contains("ttl") ? Float.parseFloat(tags.get("ttl")) : null;
+      String hostName = keys.contains("host") ? tags.get("host") : null;
+      String description = keys.contains("description") ? tags.get("description") : null;
+      List<String> valueList = filter_keywords(tags);
 
       if (client.isConnected()) {
         client.event().
-          host(tags.get("host")).
+          host(hostName).
           service(metric).
           metric(value).
-          tags(tagList).
+          ttl(ttl).
+          state(state).
+          description(description).
+          tags(valueList).
+          time(timestamp).
           send();
       } else {
         reconnectClient();
