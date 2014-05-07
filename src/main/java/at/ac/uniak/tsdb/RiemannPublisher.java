@@ -14,11 +14,13 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.Set;
 import java.util.HashSet;
+import java.util.Collection;
 import java.lang.Math;
 import java.net.InetSocketAddress;
 import java.net.UnknownHostException;
 import java.io.IOException;
 import com.aphyr.riemann.client.RiemannClient;
+import com.aphyr.riemann.client.EventDSL;
 import org.jboss.netty.channel.DefaultChannelFuture;
 
 public class RiemannPublisher extends RTPublisher {
@@ -30,6 +32,7 @@ public class RiemannPublisher extends RTPublisher {
   private Date lastException;
   //keywords reserve for riemann
   private String[] keywords = {"host","state","ttl","description"}; 
+  private EventDSL event;
 
   public void initialize(final TSDB tsdb) {
     LOG.info("initialize RiemannPublisher");
@@ -60,14 +63,13 @@ public class RiemannPublisher extends RTPublisher {
   public void collectStats(final StatsCollector collector) {
   }
   
-  private ArrayList filter_keywords(final Map<String, String> tags) {
-      List<String> valueList = new ArrayList<String>();
+  private Collection filter_keywords(final Map<String, String> tags) {
       for (String keyword : keywords)  {
-          if (!tags.contains(keyword)) {
-            valueList.add(tags.get(keyword));
+          if (tags.keySet().contains(keyword)) {
+		tags.remove(keyword);
           }
       }
-      return valueList;
+      return tags.values();
   }
 
   public Deferred<Object> publishDataPoint(
@@ -78,29 +80,32 @@ public class RiemannPublisher extends RTPublisher {
       final byte[] tsuid) {
 
     try {
-
       HashSet<String> keys = new HashSet<String>(tags.keySet()); 
       String state = keys.contains("state") ? tags.get("state") : null;
-      String ttl = keys.contains("ttl") ? Float.parseFloat(tags.get("ttl")) : null;
+      Float ttl = keys.contains("ttl") ? Float.parseFloat(tags.get("ttl")) : null;
       String hostName = keys.contains("host") ? tags.get("host") : null;
       String description = keys.contains("description") ? tags.get("description") : null;
-      List<String> valueList = filter_keywords(tags);
+      List<String> tagValues = new ArrayList<String>(filter_keywords(tags));
 
       if (client.isConnected()) {
-        client.event().
-          host(hostName).
-          service(metric).
-          metric(value).
-          ttl(ttl).
-          state(state).
-          description(description).
-          tags(valueList).
-          time(timestamp).
-          send();
+	      event = client.event();
+	      event.host(hostName).
+		      service(metric).
+		      metric(value);
+	      event.tags(tagValues);
+	      if (ttl != null) {
+		      event.ttl(ttl);
+	      }
+	      if (state != null) {
+		      event.state(state);
+	      }
+	      if (description != null) {
+		      event.description(description);
+	      }
+	      event.send();
       } else {
         reconnectClient();
       }
-
     } catch (Throwable t) {
       LOG.error("Exception in RiemannPublisher publishDataPoint", t);
     }
@@ -117,22 +122,27 @@ public class RiemannPublisher extends RTPublisher {
     try {
       HashSet<String> keys = new HashSet<String>(tags.keySet()); 
       String state = keys.contains("state") ? tags.get("state") : null;
-      String ttl = keys.contains("ttl") ? Float.parseFloat(tags.get("ttl")) : null;
+      Float ttl = keys.contains("ttl") ? Float.parseFloat(tags.get("ttl")) : null;
       String hostName = keys.contains("host") ? tags.get("host") : null;
       String description = keys.contains("description") ? tags.get("description") : null;
-      List<String> valueList = filter_keywords(tags);
+      List<String> tagValues = new ArrayList<String>(filter_keywords(tags));
 
       if (client.isConnected()) {
-        client.event().
-          host(hostName).
-          service(metric).
-          metric(value).
-          ttl(ttl).
-          state(state).
-          description(description).
-          tags(valueList).
-          time(timestamp).
-          send();
+	      event = client.event();
+	      event.host(hostName).
+		      service(metric).
+		      metric(value);
+	      event.tags(tagValues);
+	      if (ttl != null) {
+		      event.ttl(ttl);
+	      }
+	      if (state != null) {
+		      event.state(state);
+	      }
+	      if (description != null) {
+		      event.description(description);
+	      }
+	      event.send();
       } else {
         reconnectClient();
       }
