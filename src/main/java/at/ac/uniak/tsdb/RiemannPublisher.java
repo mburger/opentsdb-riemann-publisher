@@ -26,9 +26,10 @@ import org.jboss.netty.channel.DefaultChannelFuture;
 public class RiemannPublisher extends RTPublisher {
 
   private static final Logger LOG = LoggerFactory.getLogger(RiemannPublisher.class);
-  private String riemannHost;
+  private String  configHosts;
+  private String[] riemannHosts;
   private int riemannPort;
-  private RiemannClient client;
+  private RiemannClient[] clients;
   private Date lastException;
   //keywords reserve for riemann
   private String[] keywords = {"host","state","ttl","description"}; 
@@ -38,13 +39,17 @@ public class RiemannPublisher extends RTPublisher {
     LOG.info("initialize RiemannPublisher");
 
     riemannPort = tsdb.getConfig().getInt("tsd.plugin.riemann.port");
-    riemannHost = tsdb.getConfig().getString("tsd.plugin.riemann.host");
+    configHosts = tsdb.getConfig().getString("tsd.plugin.riemann.host");
+    riemannHosts = configHosts.split(",");
+    clients = new RiemannClient[riemannHosts.length];
 
     try {
       /* Set this here cause of a Bug in netty -> deadlock */
       DefaultChannelFuture.setUseDeadLockChecker(false);
-      client = RiemannClient.tcp(new InetSocketAddress(riemannHost, riemannPort));
-      client.connect();
+      for (int i=0; i< riemannHosts.length; i++)  {
+            clients[i] = RiemannClient.tcp(new InetSocketAddress(riemannHosts[i],riemannPort));
+            clients[i].connect();
+      }
       LOG.info("Successfully connected RiemannClient");
     } catch (IOException e) {
       LOG.error("IOException while trying to create RiemannClient");
@@ -57,7 +62,7 @@ public class RiemannPublisher extends RTPublisher {
   }
 
   public String version() {
-    return "0.0.2";
+    return "0.0.3";
   }
 
   public void collectStats(final StatsCollector collector) {
@@ -70,6 +75,14 @@ public class RiemannPublisher extends RTPublisher {
           }
       }
       return tags.values();
+  }
+
+  public int chooseRiemann(final String service) {
+      int hash = 7;
+      for (int i=0; i<service.length(); i++) {
+          hash = hash * 31  + service.charAt(i);
+      }
+      return Math.abs(hash%clients.length);
   }
 
   public Deferred<Object> publishDataPoint(
@@ -86,9 +99,10 @@ public class RiemannPublisher extends RTPublisher {
       String hostName = keys.contains("host") ? tags.get("host") : null;
       String description = keys.contains("description") ? tags.get("description") : null;
       List<String> tagValues = new ArrayList<String>(filter_keywords(tags));
+      int riemannIndex = chooseRiemann(metric);
 
-      if (client.isConnected()) {
-	      event = client.event();
+      if (clients[riemannIndex].isConnected()) {
+	      event = clients[riemannIndex].event();
 	      event.host(hostName).
 		      service(metric).
 		      metric(value);
@@ -104,7 +118,7 @@ public class RiemannPublisher extends RTPublisher {
 	      }
 	      event.send();
       } else {
-        reconnectClient();
+        reconnectClient(riemannIndex);
       }
     } catch (Throwable t) {
       LOG.error("Exception in RiemannPublisher publishDataPoint", t);
@@ -126,9 +140,10 @@ public class RiemannPublisher extends RTPublisher {
       String hostName = keys.contains("host") ? tags.get("host") : null;
       String description = keys.contains("description") ? tags.get("description") : null;
       List<String> tagValues = new ArrayList<String>(filter_keywords(tags));
+      int riemannIndex = chooseRiemann(metric);
 
-      if (client.isConnected()) {
-	      event = client.event();
+      if (clients[riemannIndex].isConnected()) {
+	      event = clients[riemannIndex].event();
 	      event.host(hostName).
 		      service(metric).
 		      metric(value);
@@ -144,7 +159,7 @@ public class RiemannPublisher extends RTPublisher {
 	      }
 	      event.send();
       } else {
-        reconnectClient();
+        reconnectClient(riemannIndex);
       }
 
     } catch (Throwable t) {
@@ -153,7 +168,7 @@ public class RiemannPublisher extends RTPublisher {
     return new Deferred<Object>();
   }
 
-  private synchronized void reconnectClient() {
+  private synchronized void reconnectClient(int riemannIndex) {
     if (lastException == null) {
       lastException = new Date();
       return;
@@ -162,7 +177,7 @@ public class RiemannPublisher extends RTPublisher {
     long timeDiffInMillis = Math.abs(currentTime.getTime() - lastException.getTime());
     if (timeDiffInMillis <= 5*1000) {
       try {
-        client.reconnect();
+        clients[riemannIndex].reconnect();
       } catch (IOException ioe) {
         LOG.error("Error while trying to reconnect to Riemann Server, will retry in 5 Seconds");
         lastException = new Date();
