@@ -3,6 +3,7 @@ package at.ac.uniak.tsdb;
 import com.stumbleupon.async.Deferred;
 import net.opentsdb.core.TSDB;
 import net.opentsdb.stats.StatsCollector;
+import net.opentsdb.meta.Annotation;
 import net.opentsdb.tsd.RTPublisher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -61,8 +62,12 @@ public class RiemannPublisher extends RTPublisher {
     return new Deferred<Object>();
   }
 
+  public Deferred<Object> publishAnnotation(final Annotation annotation) {
+    return new Deferred<Object>();
+  }
+
   public String version() {
-    return "0.0.3";
+    return "0.0.4";
   }
 
   public void collectStats(final StatsCollector collector) {
